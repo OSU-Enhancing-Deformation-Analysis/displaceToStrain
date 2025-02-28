@@ -5,15 +5,230 @@
 #include "dependencies/Eigen/Dense"
 #include "iostream"
 #include "matplot/matplot.h"
+#include <fstream>
+#include <sstream>
+#include <filesystem>
+#include <regex>
 
 using namespace std;
 using namespace Eigen;
+namespace fs = filesystem;
 
+vector<vector<pair<double, double>>> getMotionFromFile(string fileName);
+vector<vector<pair<double, double>>> getMotionFromTiles(string folderName, int tileXNum, int tileYNum, int tileW, int tileH);
+pair<int, int> extractTileCoordinates(const string& filename);
+void exportStrainToFile(vector<vector<tuple<double, double, double>>> strainArray, string fileName);
+int getSubsets(vector<vector<pair<double, double>>> motionArray, int subsetSize, vector<pair<int, int>>& subsetLocs, vector<vector<pair<double, double>>>& displacements, vector<vector<pair<double, double>>>& distances);
+vector<vector<tuple<double, double, double>>> calcStrains(vector<vector<pair<double, double>>> motionArray, int subsetSize);
+
+int main()
+{
+    vector<vector<pair<double, double>>> motionArray = getMotionFromFile("image_displacements1.txt");
+    vector<vector<tuple<double, double, double>>> strainArray = calcStrains(motionArray, 8);
+    exportStrainToFile(strainArray, "strains.txt");
+
+	return 0;
+}
+
+
+vector<vector<pair<double, double>>> getMotionFromFile(string fileName)
+{
+    // Open the  file
+    ifstream file(fileName);
+
+    // Check if file is open
+    if (!file.is_open()) {
+        cerr << "Error opening file." << endl;
+        return {};
+    }
+
+    string line;
+
+    // Read the file line by line
+    vector<vector<pair<double, double>>> motionArray;
+    while (getline(file, line)) {
+        stringstream ss(line);  // Create a stringstream from the line
+        string value;
+        vector<string> row;
+
+        // Read each value (separated by commas) and store in a vector
+        while (getline(ss, value, ' ')) {
+            row.push_back(value);
+        }
+
+        //add row values to motionArray based on x and y value
+        if (row.size() != 4) { //invalid row
+            continue;
+        }
+        int x = stoi(row[0]);
+        int y = stoi(row[1]);
+        float motionX = stof(row[2]);
+        float motionY = stof(row[3]);
+
+        if (x >= motionArray.size()) {
+            motionArray.push_back(vector<pair<double, double>>());
+        }
+
+        motionArray[x].push_back(pair(motionX, motionY));
+
+    }
+
+    // Close the file
+    file.close();
+
+    return motionArray;
+}
+
+vector<vector<pair<double, double>>> getMotionFromTiles(string folderName, int tileXNum, int tileYNum, int tileW, int tileH)
+{
+    vector<vector<pair<double, double>>> motionArray(tileXNum, vector<pair<double, double>>(tileYNum, pair(0.0, 0.0)));
+
+    // Iterate over all files in the folder
+    for (const auto& entry : fs::directory_iterator(folderName)) {
+        if (entry.is_regular_file()) {
+            ifstream file(entry.path());
+
+            // Check if file is open
+            if (!file.is_open()) {
+                cerr << "Error opening file: " << entry.path() << endl;
+                continue;
+            }
+
+            string line;
+
+            // Read the file line by line
+            while (getline(file, line)) {
+                stringstream ss(line);  // Create a stringstream from the line
+                string value;
+                vector<string> row;
+
+                // Read each value (separated by space) and store in a vector
+                while (getline(ss, value, ' ')) {
+                    row.push_back(value);
+                }
+
+                // Skip invalid rows
+                if (row.size() != 4) {
+                    continue;
+                }
+
+                int x = stoi(row[0]);
+                int y = stoi(row[1]);
+                float motionX = stof(row[2]);
+                float motionY = stof(row[3]);
+
+                // Adjust x and y coordinates based on the tile position
+                std::pair<int, int> tileCoords = extractTileCoordinates(entry.path().filename().string());
+                int tileIndexX = tileCoords.first;
+                int tileIndexY = tileCoords.second;
+
+                // Use tileIndexX and tileIndexY for adjusting global coordinates
+                int globalX = x + tileIndexX * tileW;
+                int globalY = y + tileIndexY * tileH;
+
+                motionArray[globalX][globalY] = pair(motionX, motionY);
+
+                // Add the motion data to the correct position in the larger array
+                motionArray[globalX][globalY] = pair(motionX, motionY);
+            }
+
+            // Close the file
+            file.close();
+        }
+    }
+
+    return motionArray;
+}
+
+pair<int, int> extractTileCoordinates(const string& filename) {
+    // Define the regex pattern to match the suffix _x_y
+    regex pattern("_(\\d+)_(\\d+)\\.txt$");
+
+    smatch matches;
+    if (regex_search(filename, matches, pattern)) {
+        // Extract the x and y coordinates from the match
+        int x = stoi(matches[1].str());
+        int y = stoi(matches[2].str());
+        return { x, y };
+    }
+
+    // If the filename doesn't match the expected pattern, return -1, -1 as an error code
+    return { -1, -1 };
+}
+
+void exportStrainToFile(vector<vector<tuple<double, double, double>>> strainArray, string fileName)
+{
+    ofstream file(fileName);
+
+    if (!file.is_open()) {
+        cerr << "Error opening file!" << endl;
+        return;
+    }
+
+    for (int y = 0; y < strainArray[1].size(); ++y) {
+        for (int x = 0; x < strainArray.size(); ++x) {
+            file << x << " " << y << " " << 
+                get<0>(strainArray[x][y]) << " " << 
+                get<1>(strainArray[x][y]) << " " << 
+                get<2>(strainArray[x][y]) << endl;
+        }
+    }
+
+    file.close();
+    cout << "CSV file exported successfully!\n";
+}
 
 /*
-Process:
-1. Split array of displacements into subsets
-2. For each subset:
+motionArray: 2D array of motion vector pairs for each pixel
+subsetSize: size of each (square) subset
+subsetLocs: vector to store subset locations
+displacements: vector to store list of displacements for each subset
+distances: vector to store list of distances for each subset
+
+returns number of subsets
+
+This function seperates per-pixel motion data in distinct subsets for strain calculation.
+May be updated to check for invalid or empty pixels later.
+*/
+int getSubsets(vector<vector<pair<double, double>>> motionArray, int subsetSize, vector<pair<int, int>> &subsetLocs, vector<vector<pair<double, double>>> &displacements, vector<vector<pair<double, double>>> &distances) {
+    int sizeX = motionArray.size();
+    int sizeY = motionArray[0].size();
+    int subsetsNum[2] = { sizeX / subsetSize, sizeY / subsetSize };
+    for (int x = 0; x < subsetsNum[0]; x++) {
+        for (int y = 0; y < subsetsNum[1]; y++) {
+            int xCenter = x * subsetSize + int(subsetSize / 2);
+            int yCenter = y * subsetSize + int(subsetSize / 2);
+            subsetLocs.push_back(pair(x, y));
+            vector<pair<double, double>> subDisplacements;
+            vector<pair<double, double>> subDistances;
+            for (int px = x * subsetSize; px < (x + 1) * subsetSize; px++) {
+                for (int py = y * subsetSize; py < (y + 1) * subsetSize; py++) {
+                    if (px == xCenter and py == yCenter) {
+                        continue;
+                    }
+                    subDisplacements.push_back(pair(motionArray[px][py].first, motionArray[px][py].second));
+                    int xDist = px - xCenter;
+                    int yDist = py - yCenter;
+                    subDistances.push_back(pair(xDist, yDist));
+                }
+            }
+            displacements.push_back(subDisplacements);
+            distances.push_back(subDistances);
+        }
+    }
+    return subsetsNum[0] * subsetsNum[1];
+}
+
+/*
+motionArray: 2D array of motion vector pairs for each pixel
+subsetSize: size of each (square) subset
+
+returns 2D array of tuples containing (strainXX, strainYY, strainXY)
+(this array is of dimension (numSubsetsX, numSubsetsY)
+
+This function calculates strain values for each subset.
+The general process is as follows:
+For each subset:
     1. Solve least squares fit for displacement given neighbor distance
         X^T = [1.0, dist_x, dist_y]
         u_x = [disp_x]
@@ -25,59 +240,13 @@ Process:
         strain_yy = 0.5*(2.0*dvdy + dudy*dudy + dvdy*dvdy);
         strain_xy = 0.5*(dudy + dvdx + dudx*dudy + dvdx*dvdy);
 */
-
-int getSubsets(vector<vector<pair<double, double>>> motionArray, int dims[2], int subsetSize, vector<pair<int, int>>& subsetLocs, vector<vector<pair<double, double>>>& displacements, vector<vector<pair<double, double>>>& distances);
-
-int main()
+vector<vector<tuple<double, double, double>>> calcStrains(vector<vector<pair<double, double>>> motionArray, int subsetSize)
 {
-    int dims[2] = { 100, 100 };
-    std::vector<std::vector<std::pair<double, double>>> motionArray(
-        dims[0],
-        std::vector<std::pair<double, double>>(dims[1], pair(0.0, 0.0))
-    );
-
-    //------------fake motion for testing (thanks chatgpt): -------------
-    // Seed random number generator for noise.
-    srand(static_cast<unsigned int>(time(nullptr)));
-
-    // Simulation parameters
-    double strain = 0.005;      // 0.5% strain (tension) in the x direction
-    double poisson = 0.3;       // Typical Poisson's ratio (contraction in y)
-    double noiseLevel = 0.0001; // Small random noise level
-
-    // Fill the motionArray with displacement values
-    for (int i = 0; i < dims[0]; i++) {
-        for (int j = 0; j < dims[1]; j++) {
-            // Assume that the pixel position (i, j) corresponds to (x, y)
-            double x = static_cast<double>(i);
-            double y = static_cast<double>(j);
-
-            // Compute displacements:
-            double u = strain * pow(x, 1.2) + pow(y,1.05);   // Now u depends on y
-            double v = -poisson * strain * pow(y, 1.2) + pow(x,1.05); // And v depends on x
-
-            // Optionally add some random noise to simulate measurement uncertainty:
-            double noise_u = noiseLevel * ((rand() % 1000) / 1000.0 - 0.5);
-            double noise_v = noiseLevel * ((rand() % 1000) / 1000.0 - 0.5);
-            u += noise_u;
-            v += noise_v;
-
-            motionArray[i][j] = std::make_pair(u, v);
-        }
-    }
-    //-----------------------------------------------------------------------
-
-
-    int subsetSize = 5;
     vector<pair<int, int>> subsetLocs;
     vector<vector<pair<double, double>>> displacements;
     vector<vector<pair<double, double>>> distances;
-    int numSubsets = getSubsets(motionArray, dims, subsetSize, subsetLocs, displacements, distances);
+    int numSubsets = getSubsets(motionArray, subsetSize, subsetLocs, displacements, distances);
     int numNeigh = subsetSize * subsetSize - 1;
-
-    /*for (int i = 0; i < subsetLocs.size(); i++) {
-        cout << "x: " << subsetLocs[i].first << " y: " << subsetLocs[i].second << endl;
-    }*/
 
     vector<tuple<double, double, double>> strains;
 
@@ -120,8 +289,8 @@ int main()
         }
 
         //calculate coefficients
-        double coeffsX[3] = {0.0};
-        double coeffsY[3] = {0.0};
+        double coeffsX[3] = { 0.0 };
+        double coeffsY[3] = { 0.0 };
         for (int i = 0; i < 3; ++i) {
             for (int j = 0; j < 3; ++j) {
                 coeffsX[i] += XtXi(i, j) * Xtux(j);
@@ -142,89 +311,20 @@ int main()
         strains.push_back(tuple(strainXX, strainYY, strainXY));
     }
 
-    int subXSize = dims[0] / subsetSize;
-	int subYSize = dims[1] / subsetSize;
+    int sizeX = motionArray.size();
+    int sizeY = motionArray[0].size();
+    int numSubsetsX = sizeX / subsetSize;
+    int numSubsetsY = sizeY / subsetSize;
 
-    // Create motion arrays for plotting
-    vector<vector<double>> motionX(dims[1], vector<double>(dims[0]));
-    vector<vector<double>> motionY(dims[1], vector<double>(dims[0]));
-    for (int x = 0; x < dims[0]; ++x) {
-        for (int y = 0; y < dims[1]; ++y) {
-            motionX[y][x] = motionArray[x][y].first;
-            motionY[y][x] = motionArray[x][y].second;
-        }
+    // Create 2D strain Array
+    vector<vector<tuple<double, double, double>>> strainArr(numSubsetsX, vector<tuple<double, double, double>>(numSubsetsY, tuple(0.0, 0.0, 0.0))); 
+
+    for (int i = 0; i < numSubsets; ++i) {
+        int x = subsetLocs[i].first;
+        int y = subsetLocs[i].second;
+        get<0>(strainArr[x][y]) = get<0>(strains[i]);
+        get<1>(strainArr[x][y]) = get<1>(strains[i]);
+        get<2>(strainArr[x][y]) = get<2>(strains[i]);
     }
-
-	// Create strain Arrays
-	vector<vector<double>> strainArrXX(subYSize, vector<double>(subXSize));
-	vector<vector<double>> strainArrYY(subYSize, vector<double>(subXSize));
-	vector<vector<double>> strainArrXY(subYSize, vector<double>(subXSize));
-
-	for (int i = 0; i < numSubsets; ++i) {
-		int x = subsetLocs[i].first;
-		int y = subsetLocs[i].second;
-		strainArrXX[y][x] = std::get<0>(strains[i]);
-		strainArrYY[y][x] = std::get<1>(strains[i]);
-		strainArrXY[y][x] = std::get<2>(strains[i]);
-        //cout << "x " << std::get<0>(strains[i]) << "y " << std::get<1>(strains[i]) << "xy " << std::get<2>(strains[i]) << endl;
-	}
-
-    matplot::subplot(2, 3, 1);
-    matplot::imagesc(motionX);
-    matplot::title("Motion X");
-    matplot::colorbar();
-
-    matplot::subplot(2, 3, 2);
-    matplot::imagesc(motionY);
-    matplot::title("Motion Y");
-    matplot::colorbar();
-
-    matplot::subplot(2, 3, 3);
-    matplot::imagesc(strainArrXX);
-    matplot::title("Strain XX");
-    matplot::colorbar();
-
-    matplot::subplot(2, 3, 4);
-    matplot::imagesc(strainArrYY);
-    matplot::title("Strain YY");
-    matplot::colorbar();
-
-    matplot::subplot(2, 3, 5);
-    matplot::imagesc(strainArrXY);
-    matplot::title("Strain XY");
-    matplot::colorbar();
-
-    matplot::show();
-
-
-	return 0;
-}
-
-
-//returns number of subsets
-int getSubsets(vector<vector<pair<double, double>>> motionArray, int dims[2], int subsetSize, vector<pair<int, int>> &subsetLocs, vector<vector<pair<double, double>>> &displacements, vector<vector<pair<double, double>>> &distances) {
-    int subsetsNum[2] = { dims[0] / subsetSize, dims[1] / subsetSize };
-    for (int x = 0; x < subsetsNum[0]; x++) {
-        for (int y = 0; y < subsetsNum[1]; y++) {
-            int xCenter = x * subsetSize + int(subsetSize / 2);
-            int yCenter = y * subsetSize + int(subsetSize / 2);
-            subsetLocs.push_back(pair(x, y));
-            vector<pair<double, double>> subDisplacements;
-            vector<pair<double, double>> subDistances;
-            for (int px = x * subsetSize; px < (x + 1) * subsetSize; px++) {
-                for (int py = y * subsetSize; py < (y + 1) * subsetSize; py++) {
-                    if (px == xCenter and py == yCenter) {
-                        continue;
-                    }
-                    subDisplacements.push_back(pair(motionArray[px][py].first, motionArray[px][py].second));
-                    int xDist = px - xCenter;
-                    int yDist = py - yCenter;
-                    subDistances.push_back(pair(xDist, yDist));
-                }
-            }
-            displacements.push_back(subDisplacements);
-            distances.push_back(subDistances);
-        }
-    }
-    return subsetsNum[0] * subsetsNum[1];
+    return strainArr;
 }
