@@ -27,13 +27,13 @@ int main(int argc, char* argv[])
     if (argc < 3) {
         cout << "Not enough arguments." << endl;
         cout << "Format:" << endl;
-        cout << "./strain_calc.exe <disp file path> <num subsets>" << endl;
+        cout << "./strain_calc.exe <disp file path> <subset size>" << endl;
         return 0;
     }
     string filePath = argv[1];
-    int numSubsets = stoi(argv[2]);
+    int subsetSize = stoi(argv[2]);
     vector<vector<pair<double, double>>> motionArray = getMotionFromFile(filePath);
-    vector<vector<tuple<double, double, double>>> strainArray = calcStrains(motionArray, numSubsets);
+    vector<vector<tuple<double, double, double>>> strainArray = calcStrains(motionArray, subsetSize);
     exportStrainToFile(strainArray, getFileName(filePath) + "_strain_result.txt");
 
 	return 0;
