@@ -4,7 +4,6 @@
 #include "strain_calc.h"
 #include "dependencies/Eigen/Dense"
 #include "iostream"
-#include "matplot/matplot.h"
 #include <fstream>
 #include <sstream>
 #include <filesystem>
@@ -14,6 +13,7 @@ using namespace std;
 using namespace Eigen;
 namespace fs = filesystem;
 
+string getFileName(const string& filePath);
 vector<vector<pair<double, double>>> getMotionFromFile(string fileName);
 vector<vector<pair<double, double>>> getMotionFromTiles(string folderName, int tileXNum, int tileYNum, int tileW, int tileH);
 pair<int, int> extractTileCoordinates(const string& filename);
@@ -21,15 +21,41 @@ void exportStrainToFile(vector<vector<tuple<double, double, double>>> strainArra
 int getSubsets(vector<vector<pair<double, double>>> motionArray, int subsetSize, vector<pair<int, int>>& subsetLocs, vector<vector<pair<double, double>>>& displacements, vector<vector<pair<double, double>>>& distances);
 vector<vector<tuple<double, double, double>>> calcStrains(vector<vector<pair<double, double>>> motionArray, int subsetSize);
 
-int main()
+//arguments: <disp file name> <num subsets>
+int main(int argc, char* argv[])
 {
-    vector<vector<pair<double, double>>> motionArray = getMotionFromFile("image_displacements1.txt");
-    vector<vector<tuple<double, double, double>>> strainArray = calcStrains(motionArray, 8);
-    exportStrainToFile(strainArray, "strains.txt");
+    if (argc < 3) {
+        cout << "Not enough arguments." << endl;
+        cout << "Format:" << endl;
+        cout << "./strain_calc.exe <disp file path> <num subsets>" << endl;
+        return 0;
+    }
+    string filePath = argv[1];
+    int numSubsets = stoi(argv[2]);
+    vector<vector<pair<double, double>>> motionArray = getMotionFromFile(filePath);
+    vector<vector<tuple<double, double, double>>> strainArray = calcStrains(motionArray, numSubsets);
+    exportStrainToFile(strainArray, getFileName(filePath) + "_strain_result.txt");
 
 	return 0;
 }
 
+string getFileName(const string& filePath) {
+    // Find the last occurrence of directory separator
+    size_t lastSlash = filePath.find_last_of("/\\");
+
+    // Extract the file name from the path
+    string fileName = (lastSlash == string::npos) ? filePath : filePath.substr(lastSlash + 1);
+
+    // Find the last occurrence of a dot (.)
+    size_t lastDot = fileName.find_last_of(".");
+
+    // Extract only the file name without the extension
+    if (lastDot != string::npos) {
+        fileName = fileName.substr(0, lastDot);
+    }
+
+    return fileName;
+}
 
 vector<vector<pair<double, double>>> getMotionFromFile(string fileName)
 {
@@ -118,7 +144,7 @@ vector<vector<pair<double, double>>> getMotionFromTiles(string folderName, int t
                 float motionY = stof(row[3]);
 
                 // Adjust x and y coordinates based on the tile position
-                std::pair<int, int> tileCoords = extractTileCoordinates(entry.path().filename().string());
+                pair<int, int> tileCoords = extractTileCoordinates(entry.path().filename().string());
                 int tileIndexX = tileCoords.first;
                 int tileIndexY = tileCoords.second;
 
@@ -175,7 +201,7 @@ void exportStrainToFile(vector<vector<tuple<double, double, double>>> strainArra
     }
 
     file.close();
-    cout << "CSV file exported successfully!\n";
+    cout << "txt file exported successfully!\n";
 }
 
 /*
@@ -193,7 +219,9 @@ May be updated to check for invalid or empty pixels later.
 int getSubsets(vector<vector<pair<double, double>>> motionArray, int subsetSize, vector<pair<int, int>> &subsetLocs, vector<vector<pair<double, double>>> &displacements, vector<vector<pair<double, double>>> &distances) {
     int sizeX = motionArray.size();
     int sizeY = motionArray[0].size();
-    int subsetsNum[2] = { sizeX / subsetSize, sizeY / subsetSize };
+    //num subsets rounded down if image is not divisible by subset
+    //this leaves a small portion of the image unprocessed
+    int subsetsNum[2] = { int(sizeX / subsetSize), int(sizeY / subsetSize) };
     for (int x = 0; x < subsetsNum[0]; x++) {
         for (int y = 0; y < subsetsNum[1]; y++) {
             int xCenter = x * subsetSize + int(subsetSize / 2);
