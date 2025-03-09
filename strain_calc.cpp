@@ -2,7 +2,7 @@
 //
 
 #include "strain_calc.h"
-#include "dependencies/Eigen/Dense"
+#include "Eigen/Dense"
 #include "cnpy.h"
 #include "iostream"
 #include <fstream>

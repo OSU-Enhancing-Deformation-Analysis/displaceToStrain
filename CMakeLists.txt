@@ -11,11 +11,14 @@ endif()
 
 project ("strain_calc")
 
+# Add Eigen as a subdirectory
+# add_subdirectory(dependencies/Eigen)
+
 # Add source to this project's executable.
 add_executable (strain_calc "strain_calc.cpp" "strain_calc.h" "cnpy.h" "cnpy.cpp")
 
-if (CMAKE_VERSION VERSION_GREATER 3.12)
-  set_property(TARGET strain_calc PROPERTY CXX_STANDARD 20)
-endif()
+target_include_directories(strain_calc PRIVATE ${CMAKE_SOURCE_DIR}/dependencies/Eigen)
 
-# TODO: Add tests and install targets if needed.
+if (CMAKE_VERSION VERSION_GREATER 3.12)
+set_property(TARGET strain_calc PROPERTY CXX_STANDARD 20)
+endif()
