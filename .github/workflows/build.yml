@@ -5,6 +5,16 @@ on:
     branches: [ $default-branch ]
   pull_request:
     branches: [ $default-branch ]
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'Build type'
+        required: true
+        default: 'Release'
+        type: choice
+        options:
+          - Debug
+          - Release
 
 jobs:
   build:
