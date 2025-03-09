@@ -3,6 +3,7 @@
 
 #include "strain_calc.h"
 #include "dependencies/Eigen/Dense"
+#include "cnpy.h"
 #include "iostream"
 #include <fstream>
 #include <sstream>
@@ -15,6 +16,7 @@ namespace fs = filesystem;
 
 string getFileName(const string& filePath);
 vector<vector<pair<double, double>>> getMotionFromFile(string fileName);
+vector<vector<pair<double, double>>> getMotionNumpyFromFile(string fileName);
 vector<vector<pair<double, double>>> getMotionFromTiles(string folderName, int tileXNum, int tileYNum, int tileW, int tileH);
 pair<int, int> extractTileCoordinates(const string& filename);
 void exportStrainToFile(vector<vector<tuple<double, double, double>>> strainArray, string fileName);
@@ -32,7 +34,14 @@ int main(int argc, char* argv[])
     }
     string filePath = argv[1];
     int subsetSize = stoi(argv[2]);
-    vector<vector<pair<double, double>>> motionArray = getMotionFromFile(filePath);
+    // Check if the file ends with .npy
+    vector<vector<pair<double, double>>> motionArray;
+    if (filePath.substr(filePath.size() - 4) == ".npy") {
+      motionArray = getMotionNumpyFromFile(filePath);  
+    } else {
+      motionArray = getMotionFromFile(filePath);
+    }
+
     vector<vector<tuple<double, double, double>>> strainArray = calcStrains(motionArray, subsetSize);
     exportStrainToFile(strainArray, getFileName(filePath) + "_strain_result.txt");
 
@@ -103,6 +112,36 @@ vector<vector<pair<double, double>>> getMotionFromFile(string fileName)
     file.close();
 
     return motionArray;
+}
+
+vector<vector<pair<double, double>>> getMotionNumpyFromFile(string fileName) {
+  cnpy::NpyArray arr = cnpy::npy_load(fileName);
+
+  if (arr.shape.size() != 3 || arr.shape[2] != 2) {
+    cerr << "Invalid .npy file format. Expected shape (rows, cols, 2)." << endl;
+    return {};
+  }
+
+  // Check if the data type matches double
+  if (arr.word_size != sizeof(double)) {
+    cerr << "Warning: Expected double precision data, but word_size = " << arr.word_size << endl;
+  }
+
+  size_t rows = arr.shape[0];
+  size_t cols = arr.shape[1];
+
+  vector<vector<pair<double, double>>> motionArray(rows, vector<pair<double, double>>(cols));
+
+  // Read the data assuming row-major order.
+  double* data = arr.data<double>();
+  for (size_t i = 0; i < rows; ++i) {
+    for (size_t j = 0; j < cols; ++j) {
+      size_t index = (i * cols + j) * 2;  // Each element is 2 doubles (x, y)
+      motionArray[i][j] = {data[index], data[index + 1]};
+    }
+  }
+
+  return motionArray;
 }
 
 vector<vector<pair<double, double>>> getMotionFromTiles(string folderName, int tileXNum, int tileYNum, int tileW, int tileH)

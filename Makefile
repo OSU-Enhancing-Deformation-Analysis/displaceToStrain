@@ -7,11 +7,11 @@
 CC = clang++
 
 # The flags to pass to the compiler
-CFLAGS = -std=c++17 -Wall -Wextra -Wpedantic -g
+CFLAGS = -std=c++17 -Wall -g
 
 # The directory containing the source code
 BUILDDIR = build
-SOURCES = strain_calc.cpp
+SOURCES = strain_calc.cpp cnpy.cpp
 OBJECTS = $(patsubst %.cpp,$(BUILDDIR)/%.o,$(SOURCES))
 
 # The target executable
