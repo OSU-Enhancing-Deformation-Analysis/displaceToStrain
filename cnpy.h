@@ -6,7 +6,6 @@
 #define LIBCNPY_H_
 
 #include <stdint.h>
-#include <zlib.h>
 
 #include <cassert>
 #include <cstdio>
