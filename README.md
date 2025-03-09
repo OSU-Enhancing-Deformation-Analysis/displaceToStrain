@@ -5,12 +5,12 @@
 2. Run using command line:
 
 ```
-./strain_calc.exe <displacement file path> <subset size>
+./strain_calc.exe <displacement file path> <subset size> [-npy]
 ```
 
-3. Program will output strain in a txt file
+3. Program will output strain in a txt file. Optionally, you can use the -npy flag to output the strain data in a .npy file.
 
-Note: displacement.txt file must be formatted in the following fashion:
+> Note: displacement.txt file must be formatted in the following fashion:
 
 ```
 <pixelX> <pixelY> <motionX> <motionY>
@@ -28,6 +28,9 @@ Example:
 1 1 1.123 5.343 
 ...
 ```
+
+> Note: When using the -npy flag, the displacement file must be a .npy file. The values should be double precision and in the shape (rows, cols, 2).
+
 
 
 ## Building
