@@ -23,9 +23,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: []
         build_type: [Release]
-        c_compiler: []
         include:
           - os: windows-latest
             c_compiler: cl
