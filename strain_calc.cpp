@@ -27,21 +27,41 @@ void exportStrainToNumpy(vector<vector<tuple<double, double, double>>> strainArr
 int getSubsets(vector<vector<pair<double, double>>> motionArray, int subsetSize, vector<pair<int, int>>& subsetLocs, vector<vector<pair<double, double>>>& displacements, vector<vector<pair<double, double>>>& distances);
 vector<vector<tuple<double, double, double>>> calcStrains(vector<vector<pair<double, double>>> motionArray, int subsetSize);
 
-//arguments: <disp file name> <subset size> [-npy]
+//arguments: <disp file name> <subset size> [-npy] [-o <output_dir>]
 int main(int argc, char* argv[])
 {
     if (argc < 3) {
         cout << "Not enough arguments." << endl;
         cout << "Format:" << endl;
-        cout << "./strain_calc.exe <disp file path> <subset size> [-npy]" << endl;
+        cout << "./strain_calc.exe <disp file path> <subset size> [-npy] [-o <output_dir>]" << endl;
         return 0;
     }
     string filePath = argv[1];
     int subsetSize = stoi(argv[2]);
     bool exportNpy = false;
-    if (argc > 3 && (string(argv[3]) == "-npy" || string(argv[3]) == "--numpy")) {
-        exportNpy = true;
+    string outputDir = ""; // Default to current directory
+
+    int arg_index = 3;
+    while (arg_index < argc) {
+        string arg = argv[arg_index];
+        if (arg == "-npy" || arg == "--numpy") {
+            exportNpy = true;
+        } else if (arg == "-o" || arg == "--output_dir") {
+            if (arg_index + 1 < argc) {
+                outputDir = argv[arg_index + 1];
+                arg_index += 1; // Skip the next argument as it's the directory
+                // Ensure outputDir ends with a directory separator
+                if (!outputDir.empty() && outputDir.back() != '/' && outputDir.back() != '\\') {
+                    outputDir += "/";
+                }
+            } else {
+                cerr << "Error: -o or --output_dir option requires a directory path." << endl;
+                return 1;
+            }
+        }
+        arg_index += 1;
     }
+
 
     // Check if the file ends with .npy
     vector<vector<pair<double, double>>> motionArray;
@@ -54,10 +74,17 @@ int main(int argc, char* argv[])
     vector<vector<tuple<double, double, double>>> strainArray = calcStrains(motionArray, subsetSize);
 
     string baseFileName = getFileName(filePath) + "_strain_result";
-    if (exportNpy) {
-        exportStrainToNumpy(strainArray, baseFileName + ".npy");
+    string outputFilePath;
+    if (!outputDir.empty()) {
+        outputFilePath = outputDir + baseFileName;
     } else {
-        exportStrainToFile(strainArray, baseFileName + ".txt");
+        outputFilePath = baseFileName;
+    }
+
+    if (exportNpy) {
+        exportStrainToNumpy(strainArray, outputFilePath + ".npy");
+    } else {
+        exportStrainToFile(strainArray, outputFilePath + ".txt");
     }
 
 
