@@ -1,4 +1,4 @@
-Instructions:
+# Instructions:
 
 1. Download strain_calc.exe from releases
 
@@ -28,3 +28,28 @@ Example:
 1 1 1.123 5.343 
 ...
 ```
+
+
+## Building
+
+### Dependencies
+
+Eigen is used for matrix operations. It can be downloaded from the [Eigen website](http://eigen.tuxfamily.org/index.php).
+Put the Eigen folder in the dependencies folder at `dependencies/Eigen/`.
+
+### Building
+
+To build the program, run the following command:
+
+```bash
+make
+```
+
+This will create a `strain_calc` executable in the current directory.
+
+
+
+## Credits
+
+- [Eigen](http://eigen.tuxfamily.org/index.php) for matrix operations
+- [cnpy](https://github.com/rogersce/cnpy) for reading and writing numpy files
