@@ -1,0 +1,45 @@
+# CMake build output
+/build
+/CMakeFiles
+/CMakeCache.txt
+/cmake_install.cmake
+/Makefile
+/strain_calcConfig.cmake
+strain_calc
+
+# CMake generated files
+*.cmake
+*.swp
+
+# IDE specific files
+# Visual Studio
+.vs/
+*.vcxproj
+*.vcxproj.user
+*.suo
+*.user
+*.ncb
+*.obj
+*.pdb
+*.log
+.vscode/
+
+# JetBrains/IntelliJ
+.idea/
+
+# macOS specific
+.DS_Store
+
+# Linux
+*~ 
+
+# Windows
+Thumbs.db
+
+# Python (if you use any Python scripts for the project)
+*.pyc
+*.pyo
+__pycache__/
+
+# Numpy files generated from strain_calc (optional if you don't want to track them)
+*.npy

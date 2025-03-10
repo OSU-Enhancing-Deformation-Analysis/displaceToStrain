@@ -2,12 +2,16 @@
 //
 
 #include "strain_calc.h"
-#include "dependencies/Eigen/Dense"
+#include "Eigen/Dense"
+#include "cnpy.h"
 #include "iostream"
 #include <fstream>
 #include <sstream>
 #include <filesystem>
 #include <regex>
+#include <vector>
+#include <string>
+#include <tuple>
 
 using namespace std;
 using namespace Eigen;
@@ -15,26 +19,74 @@ namespace fs = filesystem;
 
 string getFileName(const string& filePath);
 vector<vector<pair<double, double>>> getMotionFromFile(string fileName);
+vector<vector<pair<double, double>>> getMotionNumpyFromFile(string fileName);
 vector<vector<pair<double, double>>> getMotionFromTiles(string folderName, int tileXNum, int tileYNum, int tileW, int tileH);
 pair<int, int> extractTileCoordinates(const string& filename);
 void exportStrainToFile(vector<vector<tuple<double, double, double>>> strainArray, string fileName);
+void exportStrainToNumpy(vector<vector<tuple<double, double, double>>> strainArray, string fileName);
 int getSubsets(vector<vector<pair<double, double>>> motionArray, int subsetSize, vector<pair<int, int>>& subsetLocs, vector<vector<pair<double, double>>>& displacements, vector<vector<pair<double, double>>>& distances);
 vector<vector<tuple<double, double, double>>> calcStrains(vector<vector<pair<double, double>>> motionArray, int subsetSize);
 
-//arguments: <disp file name> <num subsets>
+//arguments: <disp file name> <subset size> [-npy] [-o <output_dir>]
 int main(int argc, char* argv[])
 {
     if (argc < 3) {
         cout << "Not enough arguments." << endl;
         cout << "Format:" << endl;
-        cout << "./strain_calc.exe <disp file path> <subset size>" << endl;
+        cout << "./strain_calc.exe <disp file path> <subset size> [-npy] [-o <output_dir>]" << endl;
         return 0;
     }
     string filePath = argv[1];
     int subsetSize = stoi(argv[2]);
-    vector<vector<pair<double, double>>> motionArray = getMotionFromFile(filePath);
+    bool exportNpy = false;
+    string outputDir = ""; // Default to current directory
+
+    int arg_index = 3;
+    while (arg_index < argc) {
+        string arg = argv[arg_index];
+        if (arg == "-npy" || arg == "--numpy") {
+            exportNpy = true;
+        } else if (arg == "-o" || arg == "--output_dir") {
+            if (arg_index + 1 < argc) {
+                outputDir = argv[arg_index + 1];
+                arg_index += 1; // Skip the next argument as it's the directory
+                // Ensure outputDir ends with a directory separator
+                if (!outputDir.empty() && outputDir.back() != '/' && outputDir.back() != '\\') {
+                    outputDir += "/";
+                }
+            } else {
+                cerr << "Error: -o or --output_dir option requires a directory path." << endl;
+                return 1;
+            }
+        }
+        arg_index += 1;
+    }
+
+
+    // Check if the file ends with .npy
+    vector<vector<pair<double, double>>> motionArray;
+    if (filePath.substr(filePath.size() - 4) == ".npy") {
+      motionArray = getMotionNumpyFromFile(filePath);
+    } else {
+      motionArray = getMotionFromFile(filePath);
+    }
+
     vector<vector<tuple<double, double, double>>> strainArray = calcStrains(motionArray, subsetSize);
-    exportStrainToFile(strainArray, getFileName(filePath) + "_strain_result.txt");
+
+    string baseFileName = getFileName(filePath) + "_strain_result";
+    string outputFilePath;
+    if (!outputDir.empty()) {
+        outputFilePath = outputDir + baseFileName;
+    } else {
+        outputFilePath = baseFileName;
+    }
+
+    if (exportNpy) {
+        exportStrainToNumpy(strainArray, outputFilePath + ".npy");
+    } else {
+        exportStrainToFile(strainArray, outputFilePath + ".txt");
+    }
+
 
 	return 0;
 }
@@ -103,6 +155,36 @@ vector<vector<pair<double, double>>> getMotionFromFile(string fileName)
     file.close();
 
     return motionArray;
+}
+
+vector<vector<pair<double, double>>> getMotionNumpyFromFile(string fileName) {
+  cnpy::NpyArray arr = cnpy::npy_load(fileName);
+
+  if (arr.shape.size() != 3 || arr.shape[2] != 2) {
+    cerr << "Invalid .npy file format. Expected shape (rows, cols, 2)." << endl;
+    return {};
+  }
+
+  // Check if the data type matches double
+  if (arr.word_size != sizeof(double)) {
+    cerr << "Warning: Expected double precision data, but word_size = " << arr.word_size << endl;
+  }
+
+  size_t rows = arr.shape[0];
+  size_t cols = arr.shape[1];
+
+  vector<vector<pair<double, double>>> motionArray(rows, vector<pair<double, double>>(cols));
+
+  // Read the data assuming row-major order.
+  double* data = arr.data<double>();
+  for (size_t i = 0; i < rows; ++i) {
+    for (size_t j = 0; j < cols; ++j) {
+      size_t index = (i * cols + j) * 2;  // Each element is 2 doubles (x, y)
+      motionArray[i][j] = {data[index], data[index + 1]};
+    }
+  }
+
+  return motionArray;
 }
 
 vector<vector<pair<double, double>>> getMotionFromTiles(string folderName, int tileXNum, int tileYNum, int tileW, int tileH)
@@ -191,11 +273,11 @@ void exportStrainToFile(vector<vector<tuple<double, double, double>>> strainArra
         return;
     }
 
-    for (int y = 0; y < strainArray[1].size(); ++y) {
+    for (int y = 0; y < strainArray[0].size(); ++y) {
         for (int x = 0; x < strainArray.size(); ++x) {
-            file << x << " " << y << " " << 
-                get<0>(strainArray[x][y]) << " " << 
-                get<1>(strainArray[x][y]) << " " << 
+            file << x << " " << y << " " <<
+                get<0>(strainArray[x][y]) << " " <<
+                get<1>(strainArray[x][y]) << " " <<
                 get<2>(strainArray[x][y]) << endl;
         }
     }
@@ -203,6 +285,30 @@ void exportStrainToFile(vector<vector<tuple<double, double, double>>> strainArra
     file.close();
     cout << "txt file exported successfully!\n";
 }
+
+void exportStrainToNumpy(vector<vector<tuple<double, double, double>>> strainArray, string fileName) {
+    size_t rows = strainArray.size();
+    size_t cols = (rows > 0) ? strainArray[0].size() : 0; // Handle empty array case
+
+    if (rows == 0 || cols == 0) {
+        cerr << "Warning: Strain array is empty, nothing to export to numpy." << endl;
+        return;
+    }
+
+    vector<double> numpyData;
+    for (size_t x = 0; x < rows; ++x) {
+        for (size_t y = 0; y < cols; ++y) {
+            numpyData.push_back(get<0>(strainArray[x][y]));
+            numpyData.push_back(get<1>(strainArray[x][y]));
+            numpyData.push_back(get<2>(strainArray[x][y]));
+        }
+    }
+
+    vector<size_t> shape = {rows, cols, 3};
+    cnpy::npy_save(fileName, &numpyData[0], shape, "w");
+    cout << ".npy file exported successfully with shape " << shape[0] << "x" << shape[1] << "x" << shape[2] << endl;
+}
+
 
 /*
 motionArray: 2D array of motion vector pairs for each pixel

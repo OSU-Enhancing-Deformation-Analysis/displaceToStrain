@@ -1,4 +1,4 @@
-﻿# CMakeList.txt : CMake project for strain_calc, include source and define
+# CMakeList.txt : CMake project for strain_calc, include source and define
 # project specific logic here.
 #
 cmake_minimum_required (VERSION 3.8)
@@ -11,15 +11,14 @@ endif()
 
 project ("strain_calc")
 
-add_subdirectory(dependencies/matplotplusplus)
+# Add Eigen as a subdirectory
+# add_subdirectory(dependencies/Eigen)
 
 # Add source to this project's executable.
-add_executable (strain_calc "strain_calc.cpp" "strain_calc.h")
+add_executable (strain_calc "strain_calc.cpp" "strain_calc.h" "cnpy.h" "cnpy.cpp")
 
-target_link_libraries(strain_calc PUBLIC matplot)
+target_include_directories(strain_calc PRIVATE ${CMAKE_SOURCE_DIR}/dependencies/Eigen)
 
 if (CMAKE_VERSION VERSION_GREATER 3.12)
-  set_property(TARGET strain_calc PROPERTY CXX_STANDARD 20)
+set_property(TARGET strain_calc PROPERTY CXX_STANDARD 20)
 endif()
-
-# TODO: Add tests and install targets if needed.
