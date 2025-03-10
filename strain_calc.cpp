@@ -17,6 +17,7 @@ using namespace std;
 using namespace Eigen;
 namespace fs = filesystem;
 
+void processFile(const string& filePath, const string& outputDir, int subsetSize, bool exportNpy);
 string getFileName(const string& filePath);
 vector<vector<pair<double, double>>> getMotionFromFile(string fileName);
 vector<vector<pair<double, double>>> getMotionNumpyFromFile(string fileName);
@@ -33,7 +34,7 @@ int main(int argc, char* argv[])
     if (argc < 3) {
         cout << "Not enough arguments." << endl;
         cout << "Format:" << endl;
-        cout << "./strain_calc.exe <disp file path> <subset size> [-npy] [-o <output_dir>]" << endl;
+        cout << "./strain_calc.exe <disp file/folder path> <subset size> [-npy] [-o <output_dir>]" << endl;
         return 0;
     }
     string filePath = argv[1];
@@ -62,13 +63,43 @@ int main(int argc, char* argv[])
         arg_index += 1;
     }
 
+    if (fs::is_regular_file(filePath)) { //single file
+        processFile(filePath, outputDir, subsetSize, exportNpy);
+    }
+    else if (fs::is_directory(filePath)) { //folder
+        //create output folder if needed
+        if (!outputDir.empty()) {
+            fs::path pathObj(filePath);
+            outputDir = pathObj.filename().string() + "_output";
+            fs::create_directory(outputDir);
+        }
+        //go through each file in input folder
+        cout << "running on all files in folder... (may take a while)" << endl;
+        for (const auto& entry : fs::directory_iterator(filePath)) {
+            if (entry.is_regular_file()) {
+                string fileName = entry.path().filename().string();
+                string extension = fileName.substr(fileName.find_last_of(".") + 1);
+                if (extension != "txt" || extension != "npy") {
+                    continue;
+                }
+                processFile(entry.path().string(), outputDir, subsetSize, exportNpy);
+            }
+        }
+    }
+
+
+}
+
+void processFile(const string& filePath, const string& outputDir, int subsetSize, bool exportNpy)
+{
 
     // Check if the file ends with .npy
     vector<vector<pair<double, double>>> motionArray;
     if (filePath.substr(filePath.size() - 4) == ".npy") {
-      motionArray = getMotionNumpyFromFile(filePath);
-    } else {
-      motionArray = getMotionFromFile(filePath);
+        motionArray = getMotionNumpyFromFile(filePath);
+    }
+    else {
+        motionArray = getMotionFromFile(filePath);
     }
 
     vector<vector<tuple<double, double, double>>> strainArray = calcStrains(motionArray, subsetSize);
@@ -77,18 +108,17 @@ int main(int argc, char* argv[])
     string outputFilePath;
     if (!outputDir.empty()) {
         outputFilePath = outputDir + baseFileName;
-    } else {
+    }
+    else {
         outputFilePath = baseFileName;
     }
 
     if (exportNpy) {
         exportStrainToNumpy(strainArray, outputFilePath + ".npy");
-    } else {
+    }
+    else {
         exportStrainToFile(strainArray, outputFilePath + ".txt");
     }
-
-
-	return 0;
 }
 
 string getFileName(const string& filePath) {
@@ -161,7 +191,7 @@ vector<vector<pair<double, double>>> getMotionNumpyFromFile(string fileName) {
   cnpy::NpyArray arr = cnpy::npy_load(fileName);
 
   if (arr.shape.size() != 3 || arr.shape[2] != 2) {
-    cerr << "Invalid .npy file format. Expected shape (rows, cols, 2)." << endl;
+      cerr << "Invalid .npy file format. Expected shape (rows, cols, 2)." << endl;
     return {};
   }
 

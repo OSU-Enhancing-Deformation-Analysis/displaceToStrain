@@ -17,7 +17,7 @@ project ("strain_calc")
 # Add source to this project's executable.
 add_executable (strain_calc "strain_calc.cpp" "strain_calc.h" "cnpy.h" "cnpy.cpp")
 
-target_include_directories(strain_calc PRIVATE ${CMAKE_SOURCE_DIR}/dependencies/Eigen)
+target_include_directories(strain_calc PRIVATE ${CMAKE_SOURCE_DIR}/dependencies/)
 
 if (CMAKE_VERSION VERSION_GREATER 3.12)
 set_property(TARGET strain_calc PROPERTY CXX_STANDARD 20)
