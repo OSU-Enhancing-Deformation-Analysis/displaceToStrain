@@ -64,22 +64,21 @@ int main(int argc, char* argv[])
     }
 
     if (fs::is_regular_file(filePath)) { //single file
+        cout << "Processing single file" << endl;
         processFile(filePath, outputDir, subsetSize, exportNpy);
     }
     else if (fs::is_directory(filePath)) { //folder
-        //create output folder if needed
-        if (!outputDir.empty()) {
-            fs::path pathObj(filePath);
-            outputDir = pathObj.filename().string() + "_output";
-            fs::create_directory(outputDir);
-        }
+        //create output folder
+        fs::path pathObj(filePath);
+        outputDir = outputDir + pathObj.filename().string() + "_output/";
+        fs::create_directory(outputDir);
         //go through each file in input folder
-        cout << "running on all files in folder... (may take a while)" << endl;
+        cout << "Running on all files in folder... (may take a while)" << endl;
         for (const auto& entry : fs::directory_iterator(filePath)) {
             if (entry.is_regular_file()) {
                 string fileName = entry.path().filename().string();
                 string extension = fileName.substr(fileName.find_last_of(".") + 1);
-                if (extension != "txt" || extension != "npy") {
+                if (extension != "txt" && extension != "npy") {
                     continue;
                 }
                 processFile(entry.path().string(), outputDir, subsetSize, exportNpy);
@@ -92,10 +91,10 @@ int main(int argc, char* argv[])
 
 void processFile(const string& filePath, const string& outputDir, int subsetSize, bool exportNpy)
 {
-
     // Check if the file ends with .npy
     vector<vector<pair<double, double>>> motionArray;
     if (filePath.substr(filePath.size() - 4) == ".npy") {
+
         motionArray = getMotionNumpyFromFile(filePath);
     }
     else {
@@ -188,33 +187,45 @@ vector<vector<pair<double, double>>> getMotionFromFile(string fileName)
 }
 
 vector<vector<pair<double, double>>> getMotionNumpyFromFile(string fileName) {
-  cnpy::NpyArray arr = cnpy::npy_load(fileName);
+	cnpy::NpyArray arr = cnpy::npy_load(fileName);
 
-  if (arr.shape.size() != 3 || arr.shape[2] != 2) {
-      cerr << "Invalid .npy file format. Expected shape (rows, cols, 2)." << endl;
-    return {};
-  }
+	if (arr.shape.size() != 3 || arr.shape[2] != 2) {
+		cerr << "Invalid .npy file format. Expected shape (rows, cols, 2)." << endl;
+		return {};
+	}
 
-  // Check if the data type matches double
-  if (arr.word_size != sizeof(double)) {
-    cerr << "Warning: Expected double precision data, but word_size = " << arr.word_size << endl;
-  }
+	// Check if the data type matches double
+	bool isDouble = true;
+	if (arr.word_size != sizeof(double)) {
+		isDouble = false;
+	}
 
-  size_t rows = arr.shape[0];
-  size_t cols = arr.shape[1];
+	size_t rows = arr.shape[0];
+	size_t cols = arr.shape[1];
 
-  vector<vector<pair<double, double>>> motionArray(rows, vector<pair<double, double>>(cols));
+	vector<vector<pair<double, double>>> motionArray(rows, vector<pair<double, double>>(cols));
 
-  // Read the data assuming row-major order.
-  double* data = arr.data<double>();
-  for (size_t i = 0; i < rows; ++i) {
-    for (size_t j = 0; j < cols; ++j) {
-      size_t index = (i * cols + j) * 2;  // Each element is 2 doubles (x, y)
-      motionArray[i][j] = {data[index], data[index + 1]};
+	// Read the data assuming row-major order.
+    if (isDouble) {
+        double* data = arr.data<double>();
+        for (size_t i = 0; i < rows; ++i) {
+            for (size_t j = 0; j < cols; ++j) {
+                size_t index = (i * cols + j) * 2;  // Each element is 2 doubles (x, y)
+                motionArray[i][j] = { data[index], data[index + 1] };
+            }
+        }
     }
-  }
-
-  return motionArray;
+    else {
+        float* data = arr.data<float>();
+        for (size_t i = 0; i < rows; ++i) {
+            for (size_t j = 0; j < cols; ++j) {
+                size_t index = (i * cols + j) * 2;  // Each element is 2 floats (x, y)
+                motionArray[i][j] = { double(data[index]), double(data[index + 1]) };
+            }
+        }
+    }
+	
+	return motionArray;
 }
 
 vector<vector<pair<double, double>>> getMotionFromTiles(string folderName, int tileXNum, int tileYNum, int tileW, int tileH)
