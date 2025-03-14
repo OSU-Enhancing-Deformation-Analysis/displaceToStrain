@@ -1,9 +1,11 @@
 ﻿// strain_calc.cpp : Defines the entry point for the application.
 //
+#define STB_IMAGE_WRITE_IMPLEMENTATION
 
 #include "strain_calc.h"
 #include "Eigen/Dense"
 #include "cnpy.h"
+#include "stb_image_write.h"
 #include "iostream"
 #include <fstream>
 #include <sstream>
@@ -13,11 +15,15 @@
 #include <string>
 #include <tuple>
 
+const int TXT = 0;
+const int NPY = 1;
+const int JPG = 2;
+
 using namespace std;
 using namespace Eigen;
 namespace fs = filesystem;
 
-void processFile(const string& filePath, const string& outputDir, int subsetSize, bool exportNpy);
+void processFile(const string& filePath, const string& outputDir, int subsetSize, int exportFormat);
 string getFileName(const string& filePath);
 vector<vector<pair<double, double>>> getMotionFromFile(string fileName);
 vector<vector<pair<double, double>>> getMotionNumpyFromFile(string fileName);
@@ -25,6 +31,9 @@ vector<vector<pair<double, double>>> getMotionFromTiles(string folderName, int t
 pair<int, int> extractTileCoordinates(const string& filename);
 void exportStrainToFile(vector<vector<tuple<double, double, double>>> strainArray, string fileName);
 void exportStrainToNumpy(vector<vector<tuple<double, double, double>>> strainArray, string fileName);
+void exportStraintoImage(vector<vector<tuple<double, double, double>>> strainArray, string fileName);
+pair<double, double> minMax(vector<vector<tuple<double, double, double>>> strainArray);
+static double normalize(double min, double max, double val);
 int getSubsets(vector<vector<pair<double, double>>> motionArray, int subsetSize, vector<pair<int, int>>& subsetLocs, vector<vector<pair<double, double>>>& displacements, vector<vector<pair<double, double>>>& distances);
 vector<vector<tuple<double, double, double>>> calcStrains(vector<vector<pair<double, double>>> motionArray, int subsetSize);
 
@@ -34,19 +43,21 @@ int main(int argc, char* argv[])
     if (argc < 3) {
         cout << "Not enough arguments." << endl;
         cout << "Format:" << endl;
-        cout << "./strain_calc.exe <disp file/folder path> <subset size> [-npy] [-o <output_dir>]" << endl;
+        cout << "./strain_calc.exe <disp file/folder path> <subset size> [-npy/jpg] [-o <output_dir>]" << endl;
         return 0;
     }
     string filePath = argv[1];
     int subsetSize = stoi(argv[2]);
-    bool exportNpy = false;
+    int exportFormat = TXT;
     string outputDir = ""; // Default to current directory
 
     int arg_index = 3;
     while (arg_index < argc) {
         string arg = argv[arg_index];
         if (arg == "-npy" || arg == "--numpy") {
-            exportNpy = true;
+            exportFormat = NPY;
+        } else if (arg == "-jpg") {
+            exportFormat = JPG;
         } else if (arg == "-o" || arg == "--output_dir") {
             if (arg_index + 1 < argc) {
                 outputDir = argv[arg_index + 1];
@@ -65,7 +76,7 @@ int main(int argc, char* argv[])
 
     if (fs::is_regular_file(filePath)) { //single file
         cout << "Processing single file" << endl;
-        processFile(filePath, outputDir, subsetSize, exportNpy);
+        processFile(filePath, outputDir, subsetSize, exportFormat);
     }
     else if (fs::is_directory(filePath)) { //folder
         //create output folder
@@ -81,7 +92,7 @@ int main(int argc, char* argv[])
                 if (extension != "txt" && extension != "npy") {
                     continue;
                 }
-                processFile(entry.path().string(), outputDir, subsetSize, exportNpy);
+                processFile(entry.path().string(), outputDir, subsetSize, exportFormat);
             }
         }
     }
@@ -89,7 +100,7 @@ int main(int argc, char* argv[])
 
 }
 
-void processFile(const string& filePath, const string& outputDir, int subsetSize, bool exportNpy)
+void processFile(const string& filePath, const string& outputDir, int subsetSize, int exportFormat)
 {
     // Check if the file ends with .npy
     vector<vector<pair<double, double>>> motionArray;
@@ -112,11 +123,16 @@ void processFile(const string& filePath, const string& outputDir, int subsetSize
         outputFilePath = baseFileName;
     }
 
-    if (exportNpy) {
-        exportStrainToNumpy(strainArray, outputFilePath + ".npy");
-    }
-    else {
+    switch (exportFormat) {
+    case TXT:
         exportStrainToFile(strainArray, outputFilePath + ".txt");
+        break;
+    case NPY:
+        exportStrainToNumpy(strainArray, outputFilePath + ".npy");
+        break;
+    case JPG:
+        exportStraintoImage(strainArray, outputFilePath + ".jpg");
+        break;
     }
 }
 
@@ -346,8 +362,51 @@ void exportStrainToNumpy(vector<vector<tuple<double, double, double>>> strainArr
     }
 
     vector<size_t> shape = {rows, cols, 3};
-    cnpy::npy_save(fileName, &numpyData[0], shape, "w");
-    cout << ".npy file exported successfully with shape " << shape[0] << "x" << shape[1] << "x" << shape[2] << endl;
+	cnpy::npy_save(fileName, &numpyData[0], shape, "w");
+	cout << ".npy file exported successfully with shape " << shape[0] << "x" << shape[1] << "x" << shape[2] << endl;
+}
+
+void exportStraintoImage(vector<vector<tuple<double, double, double>>> strainArray, string fileName)
+{
+	int width = strainArray.size(), height = strainArray[1].size();
+	unsigned char* image_data = new unsigned char[width * height * 3];  // RGB image
+
+	pair<double, double> minMaxVals = minMax(strainArray);
+
+	for (int x = 0; x < width; ++x) {
+		for (int y = 0; y < height; ++y) {
+			int index = (y * width + x) * 3;
+			image_data[index + 0] = static_cast<unsigned char>(normalize(minMaxVals.first, minMaxVals.second, get<0>(strainArray[x][y])) * 255);
+			image_data[index + 1] = static_cast<unsigned char>(normalize(minMaxVals.first, minMaxVals.second, get<1>(strainArray[x][y])) * 255);
+			image_data[index + 2] = static_cast<unsigned char>(normalize(minMaxVals.first, minMaxVals.second, get<2>(strainArray[x][y])) * 255);
+		}
+	}
+
+
+    // Fill image_data with pixel values
+    stbi_write_jpg(fileName.c_str(), width, height, 3, image_data, 100);
+    delete[] image_data;
+}
+
+pair<double, double> minMax(vector<vector<tuple<double, double, double>>> strainArray) {
+    double minVal = 10000;
+    double maxVal = -10000;
+    int width = strainArray.size(), height = strainArray[1].size();
+    for (int x = 0; x < width; ++x) {
+        for (int y = 0; y < height; ++y) {
+            minVal = get<0>(strainArray[x][y]) < minVal ? get<0>(strainArray[x][y]) : minVal;
+            minVal = get<1>(strainArray[x][y]) < minVal ? get<1>(strainArray[x][y]) : minVal;
+            minVal = get<2>(strainArray[x][y]) < minVal ? get<2>(strainArray[x][y]) : minVal;
+            maxVal = get<0>(strainArray[x][y]) > maxVal ? get<0>(strainArray[x][y]) : maxVal;
+            maxVal = get<1>(strainArray[x][y]) > maxVal ? get<1>(strainArray[x][y]) : maxVal;
+            maxVal = get<2>(strainArray[x][y]) > maxVal ? get<2>(strainArray[x][y]) : maxVal;
+        }
+    }
+    return pair<double, double>(minVal, maxVal);
+}
+
+static double normalize(double min, double max, double val) {
+    return (val - min) / (max - min);
 }
 
 
