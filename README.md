@@ -5,10 +5,10 @@
 2. Run using command line:
 
 ```
-./strain_calc.exe <displacement file path> <subset size> [-npy]
+./strain_calc.exe <disp file/folder path> <subset size> [-npy/jpg] [-o <output_dir>]
 ```
 
-3. Program will output strain in a txt file. Optionally, you can use the -npy flag to output the strain data in a .npy file.
+3. Program will output strain in a txt file by default, or you can specify -npy or -jpg to output in other formats.
 
 > Note: displacement.txt file must be formatted in the following fashion:
 
@@ -56,3 +56,4 @@ This will create a `strain_calc` executable in the current directory.
 
 - [Eigen](http://eigen.tuxfamily.org/index.php) for matrix operations
 - [cnpy](https://github.com/rogersce/cnpy) for reading and writing numpy files
+- [stb](https://github.com/nothings/stb/tree/master) for exporting images
