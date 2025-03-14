@@ -32,7 +32,9 @@ pair<int, int> extractTileCoordinates(const string& filename);
 void exportStrainToFile(vector<vector<tuple<double, double, double>>> strainArray, string fileName);
 void exportStrainToNumpy(vector<vector<tuple<double, double, double>>> strainArray, string fileName);
 void exportStraintoImage(vector<vector<tuple<double, double, double>>> strainArray, string fileName);
+void exportStraintoImages(vector<vector<tuple<double, double, double>>> strainArray, string fileNameXX, string fileNameYY, string fileNameXY);
 pair<double, double> minMax(vector<vector<tuple<double, double, double>>> strainArray);
+tuple<double, double, double> absMax(vector<vector<tuple<double, double, double>>> strainArray);
 static double normalize(double min, double max, double val);
 int getSubsets(vector<vector<pair<double, double>>> motionArray, int subsetSize, vector<pair<int, int>>& subsetLocs, vector<vector<pair<double, double>>>& displacements, vector<vector<pair<double, double>>>& distances);
 vector<vector<tuple<double, double, double>>> calcStrains(vector<vector<pair<double, double>>> motionArray, int subsetSize);
@@ -115,23 +117,19 @@ void processFile(const string& filePath, const string& outputDir, int subsetSize
     vector<vector<tuple<double, double, double>>> strainArray = calcStrains(motionArray, subsetSize);
 
     string baseFileName = getFileName(filePath) + "_strain_result";
-    string outputFilePath;
-    if (!outputDir.empty()) {
-        outputFilePath = outputDir + baseFileName;
-    }
-    else {
-        outputFilePath = baseFileName;
-    }
 
     switch (exportFormat) {
     case TXT:
-        exportStrainToFile(strainArray, outputFilePath + ".txt");
+        exportStrainToFile(strainArray, outputDir + baseFileName + ".txt");
         break;
     case NPY:
-        exportStrainToNumpy(strainArray, outputFilePath + ".npy");
+        exportStrainToNumpy(strainArray, outputDir + baseFileName + ".npy");
         break;
     case JPG:
-        exportStraintoImage(strainArray, outputFilePath + ".jpg");
+        string filePathXX = outputDir + "XX_" + baseFileName + ".jpg";
+        string filePathYY = outputDir + "YY_" + baseFileName + ".jpg";
+        string filePathXY = outputDir + "XY_" + baseFileName + ".jpg";
+        exportStraintoImages(strainArray, filePathXX, filePathYY, filePathXY);
         break;
     }
 }
@@ -371,7 +369,7 @@ void exportStraintoImage(vector<vector<tuple<double, double, double>>> strainArr
 	int width = strainArray[0].size(), height = strainArray.size();
 	unsigned char* image_data = new unsigned char[width * height * 3];  // RGB image
 
-	pair<double, double> minMaxVals = minMax(strainArray);
+    pair<double, double> minMaxVals = minMax(strainArray);
 
 	for (int x = 0; x < width; ++x) {
 		for (int y = 0; y < height; ++y) {
@@ -386,6 +384,58 @@ void exportStraintoImage(vector<vector<tuple<double, double, double>>> strainArr
     // Fill image_data with pixel values
     stbi_write_jpg(fileName.c_str(), width, height, 3, image_data, 100);
     delete[] image_data;
+}
+
+void exportStraintoImages(vector<vector<tuple<double, double, double>>> strainArray, string fileNameXX, string fileNameYY, string fileNameXY)
+{
+    int width = strainArray[0].size(), height = strainArray.size();
+    unsigned char* imageDataXX = new unsigned char[width * height * 3];  // RGB image
+    unsigned char* imageDataYY = new unsigned char[width * height * 3];  // RGB image
+    unsigned char* imageDataXY = new unsigned char[width * height * 3];  // RGB image
+
+    tuple<double, double, double> maxVals = absMax(strainArray);
+
+    for (int x = 0; x < width; ++x) {
+        for (int y = 0; y < height; ++y) {
+            int index = (width * y + x) * 3;
+            imageDataXX[index + 0] = 0;
+            imageDataXX[index + 1] = 0;
+            imageDataXX[index + 2] = 0;
+            imageDataYY[index + 0] = 0;
+            imageDataYY[index + 1] = 0;
+            imageDataYY[index + 2] = 0;
+            imageDataXY[index + 0] = 0;
+            imageDataXY[index + 1] = 0;
+            imageDataXY[index + 2] = 0;
+            if (get<0>(strainArray[y][x]) < 0) {
+                imageDataXX[index + 0] = abs(get<0>(strainArray[y][x])) / get<0>(maxVals) * 255;
+            }
+            else {
+                imageDataXX[index + 2] = get<0>(strainArray[y][x]) / get<0>(maxVals) * 255;
+            }
+            if (get<1>(strainArray[y][x]) < 0) {
+                imageDataYY[index + 0] = abs(get<1>(strainArray[y][x])) / get<1>(maxVals) * 255;
+            }
+            else {
+                imageDataYY[index + 2] = get<1>(strainArray[y][x]) / get<1>(maxVals) * 255;
+            }
+            if (get<2>(strainArray[y][x]) < 0) {
+                imageDataXY[index + 0] = abs(get<2>(strainArray[y][x])) / get<2>(maxVals) * 255;
+            }
+            else {
+                imageDataXY[index + 2] = get<2>(strainArray[y][x]) / get<2>(maxVals) * 255;
+            }
+        }
+    }
+
+
+    // Fill image_data with pixel values
+    stbi_write_jpg(fileNameXX.c_str(), width, height, 3, imageDataYY, 100);
+    stbi_write_jpg(fileNameYY.c_str(), width, height, 3, imageDataXX, 100);
+    stbi_write_jpg(fileNameXY.c_str(), width, height, 3, imageDataXY, 100);
+    delete[] imageDataXX;
+    delete[] imageDataYY;
+    delete[] imageDataXY;
 }
 
 pair<double, double> minMax(vector<vector<tuple<double, double, double>>> strainArray) {
@@ -404,6 +454,19 @@ pair<double, double> minMax(vector<vector<tuple<double, double, double>>> strain
     }
     return pair<double, double>(minVal, maxVal);
 }
+tuple<double, double, double> absMax(vector<vector<tuple<double, double, double>>> strainArray) {
+    tuple<double, double, double> maxVals = tuple<double, double, double>(0, 0, 0);
+    int width = strainArray.size(), height = strainArray[1].size();
+    for (int x = 0; x < width; ++x) {
+        for (int y = 0; y < height; ++y) {
+            get<0>(maxVals) = get<0>(maxVals) < abs(get<0>(strainArray[x][y])) ? abs(get<0>(strainArray[x][y])) : get<0>(maxVals);
+            get<1>(maxVals) = get<1>(maxVals) < abs(get<1>(strainArray[x][y])) ? abs(get<1>(strainArray[x][y])) : get<1>(maxVals);
+            get<2>(maxVals) = get<2>(maxVals) < abs(get<2>(strainArray[x][y])) ? abs(get<2>(strainArray[x][y])) : get<2>(maxVals);
+        }
+    }
+    return maxVals;
+}
+
 
 static double normalize(double min, double max, double val) {
     return (val - min) / (max - min);
