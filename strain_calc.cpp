@@ -368,17 +368,17 @@ void exportStrainToNumpy(vector<vector<tuple<double, double, double>>> strainArr
 
 void exportStraintoImage(vector<vector<tuple<double, double, double>>> strainArray, string fileName)
 {
-	int width = strainArray.size(), height = strainArray[1].size();
+	int width = strainArray[0].size(), height = strainArray.size();
 	unsigned char* image_data = new unsigned char[width * height * 3];  // RGB image
 
 	pair<double, double> minMaxVals = minMax(strainArray);
 
 	for (int x = 0; x < width; ++x) {
 		for (int y = 0; y < height; ++y) {
-			int index = (y * width + x) * 3;
-			image_data[index + 0] = static_cast<unsigned char>(normalize(minMaxVals.first, minMaxVals.second, get<0>(strainArray[x][y])) * 255);
-			image_data[index + 1] = static_cast<unsigned char>(normalize(minMaxVals.first, minMaxVals.second, get<1>(strainArray[x][y])) * 255);
-			image_data[index + 2] = static_cast<unsigned char>(normalize(minMaxVals.first, minMaxVals.second, get<2>(strainArray[x][y])) * 255);
+            int index = (width * y + x) * 3;
+			image_data[index + 0] = static_cast<unsigned char>(normalize(minMaxVals.first, minMaxVals.second, get<0>(strainArray[y][x])) * 255);
+			image_data[index + 1] = static_cast<unsigned char>(normalize(minMaxVals.first, minMaxVals.second, get<1>(strainArray[y][x])) * 255);
+			image_data[index + 2] = static_cast<unsigned char>(normalize(minMaxVals.first, minMaxVals.second, get<2>(strainArray[y][x])) * 255);
 		}
 	}
 
