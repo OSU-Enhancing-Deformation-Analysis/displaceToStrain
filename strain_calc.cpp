@@ -14,6 +14,7 @@
 #include <vector>
 #include <string>
 #include <tuple>
+#include <opencv2/opencv.hpp>
 
 const int TXT = 0;
 const int NPY = 1;
@@ -33,11 +34,14 @@ void exportStrainToFile(vector<vector<tuple<double, double, double>>> strainArra
 void exportStrainToNumpy(vector<vector<tuple<double, double, double>>> strainArray, string fileName);
 void exportStraintoImage(vector<vector<tuple<double, double, double>>> strainArray, string fileName);
 void exportStraintoImages(vector<vector<tuple<double, double, double>>> strainArray, string fileNameXX, string fileNameYY, string fileNameXY);
+void exportMotionToImages(vector<vector<pair<double, double>>> motionArray, string fileNameX, string fileNameY);
 pair<double, double> minMax(vector<vector<tuple<double, double, double>>> strainArray);
 tuple<double, double, double> absMax(vector<vector<tuple<double, double, double>>> strainArray);
 static double normalize(double min, double max, double val);
 int getSubsets(vector<vector<pair<double, double>>> motionArray, int subsetSize, vector<pair<int, int>>& subsetLocs, vector<vector<pair<double, double>>>& displacements, vector<vector<pair<double, double>>>& distances);
 vector<vector<tuple<double, double, double>>> calcStrains(vector<vector<pair<double, double>>> motionArray, int subsetSize);
+vector<vector<tuple<double, double, double>>> gaussianStrain(vector<vector<tuple<double, double, double>>> strainArray, int kSize);
+vector<vector<pair<double, double>>> gaussianDisplacement(vector<vector<pair<double, double>>> dispArray, int kSize);
 
 //arguments: <disp file name> <subset size> [-npy] [-o <output_dir>]
 int main(int argc, char* argv[])
@@ -114,7 +118,12 @@ void processFile(const string& filePath, const string& outputDir, int subsetSize
         motionArray = getMotionFromFile(filePath);
     }
 
+    //apply gaussian blur to displacement
+    motionArray = gaussianDisplacement(motionArray, 101);
+
     vector<vector<tuple<double, double, double>>> strainArray = calcStrains(motionArray, subsetSize);
+    //apply gaussian blur to strain
+    strainArray = gaussianStrain(strainArray, 15);
 
     string baseFileName = getFileName(filePath) + "_strain_result";
 
@@ -438,6 +447,52 @@ void exportStraintoImages(vector<vector<tuple<double, double, double>>> strainAr
     delete[] imageDataXY;
 }
 
+void exportMotionToImages(vector<vector<pair<double, double>>> motionArray, string fileNameX, string fileNameY)
+{
+    int width = motionArray[0].size(), height = motionArray.size();
+    unsigned char* imageDataX = new unsigned char[width * height * 3];  // RGB image
+    unsigned char* imageDataY = new unsigned char[width * height * 3];  // RGB image
+
+    // Find max absolute values for scaling
+    double maxX = 0.0, maxY = 0.0;
+    for (int y = 0; y < height; ++y)
+        for (int x = 0; x < width; ++x) {
+            maxX = max(maxX, abs(motionArray[y][x].first));
+            maxY = max(maxY, abs(motionArray[y][x].second));
+        }
+
+    for (int x = 0; x < width; ++x) {
+        for (int y = 0; y < height; ++y) {
+            int index = (width * y + x) * 3;
+            imageDataX[index + 0] = 0;
+            imageDataX[index + 1] = 0;
+            imageDataX[index + 2] = 0;
+            imageDataY[index + 0] = 0;
+            imageDataY[index + 1] = 0;
+            imageDataY[index + 2] = 0;
+
+            double xVal = motionArray[y][x].first;
+            double yVal = motionArray[y][x].second;
+
+            if (xVal < 0)
+                imageDataX[index + 0] = abs(xVal) / maxX * 255;
+            else
+                imageDataX[index + 2] = xVal / maxX * 255;
+
+            if (yVal < 0)
+                imageDataY[index + 0] = abs(yVal) / maxY * 255;
+            else
+                imageDataY[index + 2] = yVal / maxY * 255;
+        }
+    }
+
+    stbi_write_jpg(fileNameX.c_str(), width, height, 3, imageDataX, 100);
+    stbi_write_jpg(fileNameY.c_str(), width, height, 3, imageDataY, 100);
+
+    delete[] imageDataX;
+    delete[] imageDataY;
+}
+
 pair<double, double> minMax(vector<vector<tuple<double, double, double>>> strainArray) {
     double minVal = 10000;
     double maxVal = -10000;
@@ -467,7 +522,7 @@ tuple<double, double, double> absMax(vector<vector<tuple<double, double, double>
     return maxVals;
 }
 
-
+//normalizes values to [0,1]
 static double normalize(double min, double max, double val) {
     return (val - min) / (max - min);
 }
@@ -486,13 +541,13 @@ This function seperates per-pixel motion data in distinct subsets for strain cal
 May be updated to check for invalid or empty pixels later.
 */
 int getSubsets(vector<vector<pair<double, double>>> motionArray, int subsetSize, vector<pair<int, int>> &subsetLocs, vector<vector<pair<double, double>>> &displacements, vector<vector<pair<double, double>>> &distances) {
-    int sizeX = motionArray.size();
-    int sizeY = motionArray[0].size();
+    int sizeY = motionArray.size();
+    int sizeX = motionArray[0].size();
     //num subsets rounded down if image is not divisible by subset
     //this leaves a small portion of the image unprocessed
-    int subsetsNum[2] = { int(sizeX / subsetSize), int(sizeY / subsetSize) };
-    for (int x = 0; x < subsetsNum[0]; x++) {
-        for (int y = 0; y < subsetsNum[1]; y++) {
+    int subsetsNum[2] = { int(sizeY / subsetSize), int(sizeX / subsetSize) };
+    for (int x = 0; x < subsetsNum[1]; x++) {
+        for (int y = 0; y < subsetsNum[0]; y++) {
             int xCenter = x * subsetSize + int(subsetSize / 2);
             int yCenter = y * subsetSize + int(subsetSize / 2);
             subsetLocs.push_back(pair(x, y));
@@ -503,7 +558,7 @@ int getSubsets(vector<vector<pair<double, double>>> motionArray, int subsetSize,
                     if (px == xCenter and py == yCenter) {
                         continue;
                     }
-                    subDisplacements.push_back(pair(motionArray[px][py].first, motionArray[px][py].second));
+                    subDisplacements.push_back(pair(motionArray[py][px].first, motionArray[py][px].second));
                     int xDist = px - xCenter;
                     int yDist = py - yCenter;
                     subDistances.push_back(pair(xDist, yDist));
@@ -604,24 +659,100 @@ vector<vector<tuple<double, double, double>>> calcStrains(vector<vector<pair<dou
         double strainXX = 0.5 * (2.0 * dudx + dudx * dudx + dvdx * dvdx);
         double strainYY = 0.5 * (2.0 * dvdy + dudy * dudy + dvdy * dvdy);
         double strainXY = 0.5 * (dudy + dvdx + dudx * dudy + dvdx * dvdy);
+        //cout << "strainXX: " << strainXX << endl;
+        //cout << "strainXY: " << strainXY << endl;
+        //cout << "strainYY: " << strainYY << endl;
 
         strains.push_back(tuple(strainXX, strainYY, strainXY));
     }
 
-    int sizeX = motionArray.size();
-    int sizeY = motionArray[0].size();
+    int sizeY = motionArray.size();
+    int sizeX = motionArray[0].size();
     int numSubsetsX = sizeX / subsetSize;
     int numSubsetsY = sizeY / subsetSize;
 
     // Create 2D strain Array
-    vector<vector<tuple<double, double, double>>> strainArr(numSubsetsX, vector<tuple<double, double, double>>(numSubsetsY, tuple(0.0, 0.0, 0.0))); 
+    vector<vector<tuple<double, double, double>>> strainArr(numSubsetsY, vector<tuple<double, double, double>>(numSubsetsX, tuple(0.0, 0.0, 0.0))); 
 
     for (int i = 0; i < numSubsets; ++i) {
         int x = subsetLocs[i].first;
         int y = subsetLocs[i].second;
-        get<0>(strainArr[x][y]) = get<0>(strains[i]);
-        get<1>(strainArr[x][y]) = get<1>(strains[i]);
-        get<2>(strainArr[x][y]) = get<2>(strains[i]);
+        get<0>(strainArr[y][x]) = get<0>(strains[i]);
+        get<1>(strainArr[y][x]) = get<1>(strains[i]);
+        get<2>(strainArr[y][x]) = get<2>(strains[i]);
     }
     return strainArr;
+}
+
+vector<vector<tuple<double, double, double>>> gaussianStrain(vector<vector<tuple<double, double, double>>> strainArray, int kSize)
+{
+    int rows = strainArray.size();
+    int cols = strainArray[0].size();
+    cv::Mat matXX(rows, cols, CV_64F);
+    cv::Mat matYY(rows, cols, CV_64F);
+    cv::Mat matXY(rows, cols, CV_64F);
+
+    for (int i = 0; i < rows; ++i) {
+        for (int j = 0; j < cols; ++j) {
+            matXX.at<double>(i, j) = get<0>(strainArray[i][j]);
+            matYY.at<double>(i, j) = get<1>(strainArray[i][j]);
+            matXY.at<double>(i, j) = get<2>(strainArray[i][j]);
+        }
+    }
+
+    cv::Mat gMatXX;
+    cv::Mat gMatYY;
+    cv::Mat gMatXY;
+
+    cv::Size kernel = cv::Size(kSize, kSize);
+
+    cv::GaussianBlur(matXX, gMatXX, kernel, 3.0);
+    cv::GaussianBlur(matYY, gMatYY, kernel, 3.0);
+    cv::GaussianBlur(matXY, gMatXY, kernel, 3.0);
+
+
+    vector<vector<tuple<double, double, double>>> output(rows, vector<tuple<double, double, double>>(cols, tuple(0.0, 0.0, 0.0)));
+    for (int i = 0; i < rows; ++i) {
+        for (int j = 0; j < cols; ++j) {
+            get<0>(output[i][j]) = gMatXX.at<double>(i * cols + j);
+            get<1>(output[i][j]) = gMatYY.at<double>(i * cols + j);
+            get<2>(output[i][j]) = gMatXY.at<double>(i * cols + j);
+        }
+    }
+
+    return output;
+}
+
+vector<vector<pair<double, double>>> gaussianDisplacement(vector<vector<pair<double, double>>> dispArray, int kSize)
+{
+    int rows = dispArray.size();
+    int cols = dispArray[0].size();
+    cv::Mat matX(rows, cols, CV_64F);
+    cv::Mat matY(rows, cols, CV_64F);
+
+    for (int i = 0; i < rows; ++i) {
+        for (int j = 0; j < cols; ++j) {
+            matX.at<double>(i, j) = dispArray[i][j].first;
+            matY.at<double>(i, j) = dispArray[i][j].second;
+        }
+    }
+
+    cv::Mat gMatX;
+    cv::Mat gMatY;
+
+    cv::Size kernel = cv::Size(kSize, kSize);
+
+    cv::GaussianBlur(matX, gMatX, kernel, 15.0);
+    cv::GaussianBlur(matY, gMatY, kernel, 15.0);
+
+
+    vector<vector<pair<double, double>>> output(rows, vector<pair<double, double>>(cols, pair(0.0, 0.0)));
+    for (int i = 0; i < rows; ++i) {
+        for (int j = 0; j < cols; ++j) {
+            output[i][j].first = gMatX.at<double>(i * cols + j);
+            output[i][j].second = gMatY.at<double>(i * cols + j);
+        }
+    }
+
+    return output;
 }
