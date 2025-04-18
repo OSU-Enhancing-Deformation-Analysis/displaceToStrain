@@ -40,6 +40,13 @@ Example:
 Eigen is used for matrix operations. It can be downloaded from the [Eigen website](http://eigen.tuxfamily.org/index.php).
 Put the Eigen folder in the dependencies folder at `dependencies/Eigen/`.
 
+OpenCV is required for strain pre/post processing. It can be downloaded from [OpenCV website](https://opencv.org/releases/).
+**After downloading, you must:**
+
+1. Add the path to opencv/build in the downloaded files on your computer to your PATH environment variable
+
+2. In opencv/build/x64/vc16/bin, copy all dll and pdb files to the same folder as your strain_calc.exe
+
 ### Building
 
 To build the program, run the following command:
