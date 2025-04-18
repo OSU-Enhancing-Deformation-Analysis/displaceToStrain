@@ -64,3 +64,4 @@ This will create a `strain_calc` executable in the current directory.
 - [Eigen](http://eigen.tuxfamily.org/index.php) for matrix operations
 - [cnpy](https://github.com/rogersce/cnpy) for reading and writing numpy files
 - [stb](https://github.com/nothings/stb/tree/master) for exporting images
+- [OpenCV](https://github.com/opencv/opencv/tree/4.11.0) for pre/post processing
