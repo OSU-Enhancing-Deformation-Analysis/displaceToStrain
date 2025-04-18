@@ -11,13 +11,22 @@ endif()
 
 project ("strain_calc")
 
-# Add Eigen as a subdirectory
-# add_subdirectory(dependencies/Eigen)
+# set opencv directory path
+# set(OpenCV_DIR "C:/Users/Alex/Downloads/opencv/build")
+
+#find opencv package
+find_package( OpenCV REQUIRED)
 
 # Add source to this project's executable.
 add_executable (strain_calc "strain_calc.cpp" "strain_calc.h" "cnpy.h" "cnpy.cpp")
 
-target_include_directories(strain_calc PRIVATE ${CMAKE_SOURCE_DIR}/dependencies/)
+target_include_directories(strain_calc 
+    PRIVATE 
+    ${CMAKE_SOURCE_DIR}/dependencies/ 
+    ${OpenCV_INCLUDE_DIRS}
+)
+
+target_link_libraries( strain_calc PRIVATE ${OpenCV_LIBS} )
 
 if (CMAKE_VERSION VERSION_GREATER 3.12)
 set_property(TARGET strain_calc PROPERTY CXX_STANDARD 20)

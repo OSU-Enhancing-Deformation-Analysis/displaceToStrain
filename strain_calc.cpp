@@ -20,11 +20,16 @@ const int TXT = 0;
 const int NPY = 1;
 const int JPG = 2;
 
+const int KSIZEIN = 11;
+const float SIGMAIN = 1.5;
+const int KSIZEOUT = 5;
+const int SIGMAOUT = 1.0;
+
 using namespace std;
 using namespace Eigen;
 namespace fs = filesystem;
 
-void processFile(const string& filePath, const string& outputDir, int subsetSize, int exportFormat);
+void processFile(const string& filePath, const string& outputDir, int subsetSize, int exportFormat, bool doBlur);
 string getFileName(const string& filePath);
 vector<vector<pair<double, double>>> getMotionFromFile(string fileName);
 vector<vector<pair<double, double>>> getMotionNumpyFromFile(string fileName);
@@ -40,8 +45,8 @@ tuple<double, double, double> absMax(vector<vector<tuple<double, double, double>
 static double normalize(double min, double max, double val);
 int getSubsets(vector<vector<pair<double, double>>> motionArray, int subsetSize, vector<pair<int, int>>& subsetLocs, vector<vector<pair<double, double>>>& displacements, vector<vector<pair<double, double>>>& distances);
 vector<vector<tuple<double, double, double>>> calcStrains(vector<vector<pair<double, double>>> motionArray, int subsetSize);
-vector<vector<tuple<double, double, double>>> gaussianStrain(vector<vector<tuple<double, double, double>>> strainArray, int kSize);
-vector<vector<pair<double, double>>> gaussianDisplacement(vector<vector<pair<double, double>>> dispArray, int kSize);
+vector<vector<tuple<double, double, double>>> gaussianStrain(vector<vector<tuple<double, double, double>>> strainArray, int kSize, float sigma);
+vector<vector<pair<double, double>>> gaussianDisplacement(vector<vector<pair<double, double>>> dispArray, int kSize, float sigma);
 
 //arguments: <disp file name> <subset size> [-npy] [-o <output_dir>]
 int main(int argc, char* argv[])
@@ -49,13 +54,14 @@ int main(int argc, char* argv[])
     if (argc < 3) {
         cout << "Not enough arguments." << endl;
         cout << "Format:" << endl;
-        cout << "./strain_calc.exe <disp file/folder path> <subset size> [-npy/jpg] [-o <output_dir>]" << endl;
+        cout << "./strain_calc.exe <disp file/folder path> <subset size> [-npy/jpg] [-o <output_dir>] [-b]" << endl;
         return 0;
     }
     string filePath = argv[1];
     int subsetSize = stoi(argv[2]);
     int exportFormat = TXT;
     string outputDir = ""; // Default to current directory
+    bool doBlur = false;
 
     int arg_index = 3;
     while (arg_index < argc) {
@@ -77,12 +83,15 @@ int main(int argc, char* argv[])
                 return 1;
             }
         }
+        else if (arg == "-b" || arg == "-blur") {
+            doBlur = true;
+        }
         arg_index += 1;
     }
 
     if (fs::is_regular_file(filePath)) { //single file
         cout << "Processing single file" << endl;
-        processFile(filePath, outputDir, subsetSize, exportFormat);
+        processFile(filePath, outputDir, subsetSize, exportFormat, doBlur);
     }
     else if (fs::is_directory(filePath)) { //folder
         //create output folder
@@ -98,7 +107,7 @@ int main(int argc, char* argv[])
                 if (extension != "txt" && extension != "npy") {
                     continue;
                 }
-                processFile(entry.path().string(), outputDir, subsetSize, exportFormat);
+                processFile(entry.path().string(), outputDir, subsetSize, exportFormat, doBlur);
             }
         }
     }
@@ -106,7 +115,7 @@ int main(int argc, char* argv[])
 
 }
 
-void processFile(const string& filePath, const string& outputDir, int subsetSize, int exportFormat)
+void processFile(const string& filePath, const string& outputDir, int subsetSize, int exportFormat, bool doBlur)
 {
     // Check if the file ends with .npy
     vector<vector<pair<double, double>>> motionArray;
@@ -119,11 +128,14 @@ void processFile(const string& filePath, const string& outputDir, int subsetSize
     }
 
     //apply gaussian blur to displacement
-    motionArray = gaussianDisplacement(motionArray, 101);
+    if(doBlur)
+        motionArray = gaussianDisplacement(motionArray, KSIZEIN, SIGMAIN);
 
     vector<vector<tuple<double, double, double>>> strainArray = calcStrains(motionArray, subsetSize);
+
     //apply gaussian blur to strain
-    strainArray = gaussianStrain(strainArray, 15);
+    if(doBlur)
+        strainArray = gaussianStrain(strainArray, KSIZEOUT, SIGMAOUT);
 
     string baseFileName = getFileName(filePath) + "_strain_result";
 
@@ -684,7 +696,7 @@ vector<vector<tuple<double, double, double>>> calcStrains(vector<vector<pair<dou
     return strainArr;
 }
 
-vector<vector<tuple<double, double, double>>> gaussianStrain(vector<vector<tuple<double, double, double>>> strainArray, int kSize)
+vector<vector<tuple<double, double, double>>> gaussianStrain(vector<vector<tuple<double, double, double>>> strainArray, int kSize, float sigma)
 {
     int rows = strainArray.size();
     int cols = strainArray[0].size();
@@ -706,9 +718,9 @@ vector<vector<tuple<double, double, double>>> gaussianStrain(vector<vector<tuple
 
     cv::Size kernel = cv::Size(kSize, kSize);
 
-    cv::GaussianBlur(matXX, gMatXX, kernel, 3.0);
-    cv::GaussianBlur(matYY, gMatYY, kernel, 3.0);
-    cv::GaussianBlur(matXY, gMatXY, kernel, 3.0);
+    cv::GaussianBlur(matXX, gMatXX, kernel, sigma);
+    cv::GaussianBlur(matYY, gMatYY, kernel, sigma);
+    cv::GaussianBlur(matXY, gMatXY, kernel, sigma);
 
 
     vector<vector<tuple<double, double, double>>> output(rows, vector<tuple<double, double, double>>(cols, tuple(0.0, 0.0, 0.0)));
@@ -723,7 +735,7 @@ vector<vector<tuple<double, double, double>>> gaussianStrain(vector<vector<tuple
     return output;
 }
 
-vector<vector<pair<double, double>>> gaussianDisplacement(vector<vector<pair<double, double>>> dispArray, int kSize)
+vector<vector<pair<double, double>>> gaussianDisplacement(vector<vector<pair<double, double>>> dispArray, int kSize, float sigma)
 {
     int rows = dispArray.size();
     int cols = dispArray[0].size();
@@ -742,8 +754,8 @@ vector<vector<pair<double, double>>> gaussianDisplacement(vector<vector<pair<dou
 
     cv::Size kernel = cv::Size(kSize, kSize);
 
-    cv::GaussianBlur(matX, gMatX, kernel, 15.0);
-    cv::GaussianBlur(matY, gMatY, kernel, 15.0);
+    cv::GaussianBlur(matX, gMatX, kernel, sigma);
+    cv::GaussianBlur(matY, gMatY, kernel, sigma);
 
 
     vector<vector<pair<double, double>>> output(rows, vector<pair<double, double>>(cols, pair(0.0, 0.0)));
