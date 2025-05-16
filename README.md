@@ -4,7 +4,19 @@ This program generates strain maps from displacement (motion) maps, with the goa
 
 # How strain works
 
-Strain is a measure of how much a material has been stretched. Specifically, it is the derivative of the displacement. When force is applied to a material and it is deformed, points on the material will move in reaction to that force. Compared to raw motion, strain is a better
+Strain is a measure of how much a material has been stretched. Specifically, it is the derivative of the displacement. When force is applied to a material and it is deformed, points on the material will move in reaction to that force. Compared to raw motion, strain is a better measure of deformation because it accounts for how displacement compounds over distance as all parts of the material stretch at once.
+
+# Methodology
+
+To calculate strain, a VSG (virtual strain gauge) is used. A sliding window is applied to the displacment map, and a linear polynomial fit is applied to all displacement in the window. The coefficients of this polynomial are then used to calculate green lagrange strain with the following equations:
+
+```
+strain_xx = 0.5*(2.0*dudx + dudx*dudx + dvdx*dvdx);
+strain_yy = 0.5*(2.0*dvdy + dudy*dudy + dvdy*dvdy);
+strain_xy = 0.5*(dudy + dvdx + dudx*dudy + dvdx*dvdy);
+```
+
+In addition, a gaussian filter may optionally be applied before and after strain calculation to reduce noise and emphasize results.
 
 # Results
 
@@ -68,7 +80,6 @@ make
 ```
 
 This will create a `strain_calc` executable in the current directory.
-
 
 
 ## Credits
