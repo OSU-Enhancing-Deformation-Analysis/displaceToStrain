@@ -6,7 +6,7 @@ This program generates strain maps from displacement (motion) maps, with the goa
 
 # Results
 
-![Displacement and strain map comparison](https://ibb.co/ynVGvYyM)
+![Displacement and strain map comparison](https://i.ibb.co/bg7qw2By/Figure-1-2.png)
 
 # Instructions:
 
