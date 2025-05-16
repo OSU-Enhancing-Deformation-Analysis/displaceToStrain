@@ -4,6 +4,8 @@ This program generates strain maps from displacement (motion) maps, with the goa
 
 # How strain works
 
+Strain is a measure of how much a material has been stretched. Specifically, it is the derivative of the displacement. When force is applied to a material and it is deformed, points on the material will move in reaction to that force. Compared to raw motion, strain is a better
+
 # Results
 
 ![Displacement and strain map comparison](https://i.ibb.co/bg7qw2By/Figure-1-2.png)
