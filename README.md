@@ -22,68 +22,65 @@ In addition, a gaussian filter may optionally be applied before and after strain
 
 ![Displacement and strain map comparison](https://i.ibb.co/bg7qw2By/Figure-1-2.png)
 
-# Instructions:
+# How to run:
 
-1. Download strain_calc.exe from releases
+1. Download strain_calc.exe from releases (if on windows)
 
 2. Run using command line:
 
 ```
-./strain_calc.exe <disp file/folder path> <subset size> [-npy/jpg] [-o <output_dir>]
+./strain_calc.exe <disp file/folder path> <subset size> [-npy/jpg] [-o <output_dir>] [-b]
 ```
 
-3. Program will output strain in a txt file by default, or you can specify -npy or -jpg to output in other formats.
+- Program will output strain in a txt file by default, or you can specify -npy or -jpg to output in other formats.
+- Specify -b to apply a gaussian blur to input and output
 
-> Note: displacement.txt file must be formatted in the following fashion:
+> Note: displacement input files should be npy files with double precision and in the shape (rows, cols, 2).
+
+### Building (Must do if on linux/Mac)
+
+1. Download source files
+2. Ensure all dependencies are downloaded (see below)
+3. Run the following commands in the source folder depending on OS:
+
+# Windows
 
 ```
-<pixelX> <pixelY> <motionX> <motionY>
-
-```
-And must increment pixelY values before pixelX values
-
-Example:
-
-```
-0 0 1.343 2.555
-0 1 5.333 2.344
-...
-1 0 4.323 3.234
-1 1 1.123 5.343 
-...
+mkdir build
+cd build
+cmake .. -G "Visual Studio 17 2022"
+cmake --build . --config Release
 ```
 
-> Note: When using the -npy flag, the displacement file must be a .npy file. The values should be double precision and in the shape (rows, cols, 2).
+# Linux
 
-
-
-## Building
+```
+mkdir build
+cd build
+cmake ..
+make
+```
 
 ### Dependencies
+
+CMake is required for building from source. It can be downloaded from [Cmake website](https://cmake.org/download/) for windows 
+or through the command line for linux/Mac.
+
+Visual Studio is required if building from source on windows.
 
 Eigen is used for matrix operations. It can be downloaded from the [Eigen website](http://eigen.tuxfamily.org/index.php).
 Put the Eigen folder in the dependencies folder at `dependencies/Eigen/`.
 
 OpenCV is required for strain pre/post processing. It can be downloaded from [OpenCV website](https://opencv.org/releases/).
-**After downloading, you must:**
+**If on windows, after downloading, you must:**
 
 1. Add the path to opencv/build on your computer to your PATH environment variable
 
 2. In opencv/build/x64/vc16/bin, copy all dll and pdb files to the same folder as your strain_calc.exe
 
-### Building
-
-To build the program, run the following command:
-
-```bash
-make
-```
-
-This will create a `strain_calc` executable in the current directory.
-
-
 ## Credits
 
+- [Cmake](https://cmake.org/) for building project
 - [Eigen](http://eigen.tuxfamily.org/index.php) for matrix operations
 - [cnpy](https://github.com/rogersce/cnpy) for reading and writing numpy files
 - [stb](https://github.com/nothings/stb/tree/master) for exporting images
