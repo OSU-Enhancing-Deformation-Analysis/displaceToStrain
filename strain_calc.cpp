@@ -20,10 +20,10 @@ const int TXT = 0;
 const int NPY = 1;
 const int JPG = 2;
 
-const int KSIZEIN = 11;
-const float SIGMAIN = 1.5;
-const int KSIZEOUT = 5;
-const int SIGMAOUT = 1.0;
+const int KSIZEIN = 9;
+const float SIGMAIN = 51.0;
+const int KSIZEOUT = 15;
+const int SIGMAOUT = 11.0;
 
 using namespace std;
 using namespace Eigen;
@@ -45,6 +45,7 @@ tuple<double, double, double> absMax(vector<vector<tuple<double, double, double>
 static double normalize(double min, double max, double val);
 int getSubsets(vector<vector<pair<double, double>>> motionArray, int subsetSize, vector<pair<int, int>>& subsetLocs, vector<vector<pair<double, double>>>& displacements, vector<vector<pair<double, double>>>& distances);
 vector<vector<tuple<double, double, double>>> calcStrains(vector<vector<pair<double, double>>> motionArray, int subsetSize);
+vector<vector<tuple<double, double, double>>> calcStrainsPixel(vector<vector<pair<double, double>>> motionArray, int subsetSize);
 vector<vector<tuple<double, double, double>>> gaussianStrain(vector<vector<tuple<double, double, double>>> strainArray, int kSize, float sigma);
 vector<vector<pair<double, double>>> gaussianDisplacement(vector<vector<pair<double, double>>> dispArray, int kSize, float sigma);
 
@@ -131,7 +132,7 @@ void processFile(const string& filePath, const string& outputDir, int subsetSize
     if(doBlur)
         motionArray = gaussianDisplacement(motionArray, KSIZEIN, SIGMAIN);
 
-    vector<vector<tuple<double, double, double>>> strainArray = calcStrains(motionArray, subsetSize);
+    vector<vector<tuple<double, double, double>>> strainArray = calcStrainsPixel(motionArray, subsetSize);
 
     //apply gaussian blur to strain
     if(doBlur)
@@ -693,6 +694,100 @@ vector<vector<tuple<double, double, double>>> calcStrains(vector<vector<pair<dou
         get<1>(strainArr[y][x]) = get<1>(strains[i]);
         get<2>(strainArr[y][x]) = get<2>(strains[i]);
     }
+    return strainArr;
+}
+
+vector<vector<tuple<double, double, double>>> calcStrainsPixel(vector<vector<pair<double, double>>> motionArray, int subsetSize)
+{
+
+    int sizeY = motionArray.size();
+    int sizeX = motionArray[0].size();
+    int numNeigh = subsetSize * subsetSize;
+    int halfSubset = int(subsetSize / 2);
+
+    vector<vector<tuple<double, double, double>>> strainArr(sizeY, vector<tuple<double, double, double>>(sizeX, tuple(0.0, 0.0, 0.0)));
+
+
+    for (int y = halfSubset; y < sizeY - halfSubset; y++) {
+        for (int x = halfSubset; x < sizeX - halfSubset; x++) {
+            //for each subset
+            //calculate X^T matrix and ux, uy
+            MatrixXd  Xt = MatrixXd::Zero(3, numNeigh);
+            VectorXd  ux = VectorXd::Zero(numNeigh);
+            VectorXd  uy = VectorXd::Zero(numNeigh);
+
+            
+
+
+            int i = 0;
+            for (int yDist = -halfSubset; yDist < halfSubset + 1; yDist++) {
+                for (int xDist = -halfSubset; xDist < halfSubset + 1; xDist++) {
+
+
+                    //displacements
+                    ux(i) = motionArray[y + yDist][x + xDist].first;
+                    uy(i) = motionArray[y + yDist][x + xDist].second;
+
+
+                    //distance matrix
+                    Xt(0, i) = 1.0;
+                    Xt(1, i) = xDist;
+                    Xt(2, i) = yDist;
+                    i++;
+                }
+            }
+
+
+            //calculate X^T*X
+            MatrixXd XtX = MatrixXd::Zero(3, 3);
+            for (int k = 0; k < 3; ++k) {
+                for (int m = 0; m < 3; ++m) {
+                    for (int neigh = 0; neigh < numNeigh; ++neigh) {
+                        XtX(k, m) += Xt(k, neigh) * Xt(m, neigh);
+                    }
+                }
+            }
+
+
+            //calculate inverse
+            MatrixXd XtXi = XtX.inverse();
+
+            //compute X^T*u
+            VectorXd Xtux = VectorXd::Zero(3);
+            VectorXd Xtuy = VectorXd::Zero(3);
+            for (int i = 0; i < 3; ++i) {
+                for (int neigh = 0; neigh < numNeigh; ++neigh) {
+                    Xtux(i) += Xt(i, neigh) * ux(neigh);
+                    Xtuy(i) += Xt(i, neigh) * uy(neigh);
+                }
+            }
+
+            //calculate coefficients
+            double coeffsX[3] = { 0.0 };
+            double coeffsY[3] = { 0.0 };
+            for (int i = 0; i < 3; ++i) {
+                for (int j = 0; j < 3; ++j) {
+                    coeffsX[i] += XtXi(i, j) * Xtux(j);
+                    coeffsY[i] += XtXi(i, j) * Xtuy(j);
+                }
+            }
+
+            //calculate strain
+            double dudx = coeffsX[1];
+            double dudy = coeffsX[2];
+            double dvdx = coeffsY[1];
+            double dvdy = coeffsY[2];
+
+            double strainXX = 0.5 * (2.0 * dudx + dudx * dudx + dvdx * dvdx);
+            double strainYY = 0.5 * (2.0 * dvdy + dudy * dudy + dvdy * dvdy);
+            double strainXY = 0.5 * (dudy + dvdx + dudx * dudy + dvdx * dvdy);
+
+            get<0>(strainArr[y][x]) = strainXX;
+            get<1>(strainArr[y][x]) = strainYY;
+            get<2>(strainArr[y][x]) = strainXY;
+        }
+    }
+
     return strainArr;
 }
 
