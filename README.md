@@ -29,11 +29,12 @@ In addition, a gaussian filter may optionally be applied before and after strain
 2. Run using command line:
 
 ```
-./strain_calc.exe <disp file/folder path> <subset size> [-npy/jpg] [-o <output_dir>] [-b]
+./strain_calc.exe <disp file/folder path> <subset size> [-npy/jpg] [-o <output_dir>] [-b] [-p]
 ```
 
 - Program will output strain in a txt file by default, or you can specify -npy or -jpg to output in other formats.
 - Specify -b to apply a gaussian blur to input and output
+- Specify -p to generate pixel level strain (will take longer)
 
 > Note: displacement input files should be npy files with double precision and in the shape (rows, cols, 2).
 
